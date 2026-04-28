@@ -14,18 +14,16 @@ warnings.filterwarnings('ignore')
 
 print("🚀 Retail Sales Forecasting (REAL DATA)")
 
-# =========================
+
 # PREPROCESSING
-# =========================
 def preprocess_data(df):
     df['Date'] = pd.to_datetime(df['Date'])
     df = df.dropna()
     df = df.sort_values('Date')
     return df
 
-# =========================
+
 # FEATURE ENGINEERING
-# =========================
 def create_features(df):
     df = df.copy()
     
@@ -47,9 +45,8 @@ def create_features(df):
     
     return df, le
 
-# =========================
+
 # MODEL
-# =========================
 def train_models(X, y):
     split = int(len(X)*0.8)
     
@@ -83,63 +80,66 @@ def train_models(X, y):
     
     return results
 
-# =========================
+
 # FORECAST
-# =========================
 def forecast(df, model, le, features):
-    last = df.tail(30)
+    last = df.tail(30).copy()
     last_date = df['Date'].max()
     
+    sales_history = last['Sales'].tolist()
     future = []
-    
+
+    store_id = last['Store_ID'].iloc[-1]
+    store_encoded = le.transform([store_id])[0]
+
     for i in range(30):
         date = last_date + timedelta(days=i+1)
-        
+
         row = {}
-        
+
         for col in features:
             if col == "Sales_lag_1":
-                row[col] = last['Sales'].iloc[-1]
-                
+                row[col] = sales_history[-1]
+
             elif col == "Sales_lag_7":
-                row[col] = last['Sales'].iloc[-7]
-                
+                row[col] = sales_history[-7] if len(sales_history) >= 7 else sales_history[-1]
+
             elif col == "Sales_lag_30":
-                row[col] = last['Sales'].iloc[-30]
-                
+                row[col] = sales_history[-30] if len(sales_history) >= 30 else sales_history[-1]
+
             elif col == "Sales_rolling_mean_7":
-                row[col] = last['Sales'].tail(7).mean()
-                
+                row[col] = np.mean(sales_history[-7:])
+
             elif col == "Month":
                 row[col] = date.month
-                
+
             elif col == "Day_of_Week":
                 row[col] = date.dayofweek
-                
+
             elif col == "Is_Weekend":
                 row[col] = int(date.dayofweek >= 5)
-                
+
             elif col == "Store_ID_encoded":
-                row[col] = le.transform([last['Store_ID'].iloc[-1]])[0]
-            
+                row[col] = store_encoded
+
             else:
-                # 🔥 Important: unknown features (Dept, IsHoliday etc.)
                 row[col] = 0
-        
-        # Convert to DataFrame with correct column order
+
         row_df = pd.DataFrame([row])[features]
-        
+
         pred = model.predict(row_df)[0]
-        
+
+        # 🔥 IMPORTANT LINE
+        sales_history.append(pred)
+
         future.append([date, pred])
-    
+
     return pd.DataFrame(future, columns=["Date","Predicted_Sales"])
-# =========================
+
 # MAIN
-# =========================
 def main():
     df = pd.read_csv("train.csv")
-    df = df.sample(5000, random_state=42)
+    df = df.sort_values('Date')
     
     df.rename(columns={
         "Store":"Store_ID",
